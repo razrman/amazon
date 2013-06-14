@@ -1,0 +1,256 @@
+{
+  "Description": "This template creates the full Taos Puppet class stack.",
+
+  "AWSTemplateFormatVersion": "2010-09-09",
+
+  "Parameters" : {
+    "InstanceType" : {
+      "Description" : "EC2 instance type",
+      "Type" : "String",
+      "Default" : "t1.micro",
+      "AllowedValues" : [ "t1.micro","m1.small","m1.medium","m1.large","m1.xlarge" ],
+      "ConstraintDescription" : "must be a valid EC2 instance type."
+    },
+    "AssignedCIDRBlock" :
+         {
+      "Description" : "CIDR block assigned to this VPC.",
+      "Type" : "String",
+      "Default" :  "10.0.0.0/24"
+    },
+    "Subnet1" :
+         {
+      "Description" : "Public Subnet in AZ1.",
+      "Type" : "String",
+      "Default" :  "10.0.0.0/24"
+    },
+    "UserName" : {
+      "Description" : "Stack User Name",
+      "Default" : "user-00",
+      "Type" : "String"
+    },
+    "KeyName" : {
+      "Description" : "Name of and existing EC2 KeyPair to enable SSH access to the instance",
+      "Default" : "user-00-key",
+      "Type" : "String"
+    },
+    "Abort": {
+      "Description": "Should the entire stack be aborted if bootstraping fails?",
+      "Type": "String",
+      "Default": "yes",
+      "AllowedValues": [ "yes", "no" ],
+      "ConstraintDescription": "yes or no"
+    }
+  },
+
+  "Mappings" : {
+    "BootstrapSettingMap": {
+      "abort": { "yes": "$?", "no": "0" }
+    },
+    "RegionMap" : {
+      "us-east-1" : { "AMI" : "ami-1624987f" },
+      "us-west-1" : { "AMI" : "ami-1bf9de5e" },
+      "us-west-2" : { "AMI" : "ami-2a31bf1a" }
+    },
+    "StaticRoutesViaIgw" : {
+      "R1"    : {"Target" : "0.0.0.0/0"}
+    }
+  },
+
+  "Resources": {
+    "VPC" : {
+      "Type" : "AWS::EC2::VPC",
+      "Properties" : {
+        "CidrBlock" : { "Ref" : "AssignedCIDRBlock" }
+      }
+    },
+
+    "InternetGateway" : {
+      "Type" : "AWS::EC2::InternetGateway",
+      "Properties" : {
+      }
+    },
+
+    "AttachGateway" : {
+       "Type" : "AWS::EC2::VPCGatewayAttachment",
+       "Properties" : {
+         "VpcId" : { "Ref" : "VPC" },
+         "InternetGatewayId" : { "Ref" : "InternetGateway" }
+       }
+    },
+
+   "PublicSubnet1" : {
+      "Type" : "AWS::EC2::Subnet",
+      "Properties" : {
+        "VpcId" : { "Ref" : "VPC" },
+        "CidrBlock" : { "Ref" : "Subnet1" },
+        "AvailabilityZone" : { "Fn::Select" : [ "0", { "Fn::GetAZs" : "" } ] }
+      }
+    },
+    "PublicRouteTable1" : {
+      "Type" : "AWS::EC2::RouteTable",
+      "Properties" : {
+        "VpcId" : {"Ref" : "VPC"}
+      }
+    },
+
+    "PublicSubnet1RouteTableAssociation" : {
+      "Type" : "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties" : {
+        "SubnetId" : { "Ref" : "PublicSubnet1" },
+        "RouteTableId" : { "Ref" : "PublicRouteTable1" }
+      }
+    },
+    "JumpSG" : {
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties" : {
+        "GroupDescription" : "SSH Access for Jump Box",
+        "VpcId" : {"Ref" : "VPC"},
+        "SecurityGroupIngress" : [
+          { "IpProtocol" : "tcp", "FromPort" : "22", "ToPort" : "22", "CidrIp" : "0.0.0.0/0" }
+        ],
+        "SecurityGroupEgress" : [
+          { "IpProtocol" : "tcp", "FromPort" : "22", "ToPort" : "22", "CidrIp" : "0.0.0.0/0" },
+          { "IpProtocol" : "tcp", "FromPort" : "80", "ToPort" : "80", "CidrIp" : "0.0.0.0/0" },
+          { "IpProtocol" : "tcp", "FromPort" : "443", "ToPort" : "443", "CidrIp" : "0.0.0.0/0" },
+          { "IpProtocol" : "tcp", "FromPort" : "0", "ToPort" : "65535", "CidrIp" : "10.0.0.0/24" }
+        ]
+      }
+    },
+    "WebSG" : {
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties" : {
+        "GroupDescription" : "SSH, HTTP, HTTPS Outbound connections",
+        "VpcId" : {"Ref" : "VPC"},
+        "SecurityGroupIngress" : [
+          { "IpProtocol" : "tcp", "FromPort" : "443", "ToPort" : "443", "CidrIp" : "0.0.0.0/0" },
+          { "IpProtocol" : "tcp", "FromPort" : "80", "ToPort" : "80", "CidrIp" : "0.0.0.0/0" },
+          { "IpProtocol" : "tcp", "FromPort" : "22", "ToPort" : "22", "CidrIp" : "0.0.0.0/0" }
+        ],
+        "SecurityGroupEgress" : [
+          { "IpProtocol" : "tcp", "FromPort" : "22", "ToPort" : "22", "CidrIp" : "0.0.0.0/0" },
+          { "IpProtocol" : "tcp", "FromPort" : "80", "ToPort" : "80", "CidrIp" : "0.0.0.0/0" },
+          { "IpProtocol" : "tcp", "FromPort" : "443", "ToPort" : "443", "CidrIp" : "0.0.0.0/0" },
+          { "IpProtocol" : "tcp", "FromPort" : "0", "ToPort" : "65535", "CidrIp" : "10.0.0.0/24" }
+        ]
+      }
+    },
+    "StackSG" : {
+      "Type" : "AWS::EC2::SecurityGroup",
+      "Properties" : {
+        "GroupDescription" : "SSH, HTTP, HTTPS Outbound connections",
+        "VpcId" : {"Ref" : "VPC"},
+        "SecurityGroupIngress" : [
+          { "IpProtocol" : "tcp", "FromPort" : "0", "ToPort" : "65535", "CidrIp" : "10.0.0.0/24" }
+        ],
+        "SecurityGroupEgress" : [
+          { "IpProtocol" : "tcp", "FromPort" : "22", "ToPort" : "22", "CidrIp" : "0.0.0.0/0" },
+          { "IpProtocol" : "tcp", "FromPort" : "80", "ToPort" : "80", "CidrIp" : "0.0.0.0/0" },
+          { "IpProtocol" : "tcp", "FromPort" : "443", "ToPort" : "443", "CidrIp" : "0.0.0.0/0" },
+          { "IpProtocol" : "tcp", "FromPort" : "0", "ToPort" : "65535", "CidrIp" : "10.0.0.0/24" }
+        ]
+      }
+    },
+
+    "IgwSubnet1Route1" : {
+      "Type" : "AWS::EC2::Route",
+      "Properties" : {
+        "RouteTableId" : { "Ref" : "PublicRouteTable1" },
+        "DestinationCidrBlock" : { "Fn::FindInMap" : ["StaticRoutesViaIgw", "R1", "Target" ] },
+        "GatewayId" : { "Ref" : "InternetGateway" }
+      }
+    },
+
+{% set TAGS = [ 'jump', 'dns', 'puppet', 'ldap', 'web', 'db' ] %}
+{% set IP =  {  'jump'  : '10.0.0.100',
+                'dns'   : '10.0.0.101',
+                'puppet': '10.0.0.102',
+                'ldap'  : '10.0.0.103',
+                'web'   : '10.0.0.104',
+                'db'    : '10.0.0.105' 
+               } %}
+{% for tag in TAGS %}
+    "{{ tag }}EIP1" : {
+      "Type" : "AWS::EC2::EIP",
+      "Properties" : {
+        "Domain" : "vpc"
+      }
+    },
+    "{{ tag }}ENI1" : {
+      "Type" : "AWS::EC2::NetworkInterface",
+        "Properties" : {
+        "SubnetId" : { "Ref" : "PublicSubnet1" },
+        "Description" : "ENI for Nat in AZ1",
+        "PrivateIpAddress" : "{{ IP[tag] }}",
+{% if tag == 'jump' %}
+        "GroupSet" : [ { "Ref" : "JumpSG" } ]
+{% elif tag == 'web' %}
+        "GroupSet" : [ { "Ref" : "WebSG" } ]
+{% else %}
+        "GroupSet" : [ { "Ref" : "StackSG" } ]
+{% endif %}
+        }
+      },
+      "Associate{{ tag  }}ENI1toIP2" : {
+        "Type" : "AWS::EC2::EIPAssociation",
+        "Properties" : {
+        "AllocationId" : { "Fn::GetAtt" : [ "{{ tag  }}EIP1", "AllocationId" ]},
+        "NetworkInterfaceId" : { "Ref" : "{{ tag }}ENI1" }
+        }
+      },
+
+    "Instance{{ tag }}": {
+      "Type": "AWS::EC2::Instance",
+      "Metadata" : {
+        "Comment" : "Package and Image Management Instance",
+        "region": { "Ref": "AWS::Region" },
+        "stack_name": { "Ref": "AWS::StackName" }
+      },
+      "Properties" : {
+        "ImageId" : { "Fn::FindInMap" : [ "RegionMap", { "Ref" : "AWS::Region" }, "AMI" ]},
+        "NetworkInterfaces" : [ { "NetworkInterfaceId" : { "Ref" : "{{ tag }}ENI1" }, "DeviceIndex" : "0" } ],
+        "InstanceType" : { "Ref" : "InstanceType" },
+        "KeyName" : { "Ref" : "KeyName" },
+        "Tags" : [ {"Key" : "Application", "Value" : { "Ref" : "AWS::StackName"} },
+                   {"Key" : "Name", "Value" : { "Fn::Join" : ["", [ "{{ tag }}-", { "Ref" : "UserName"} ]]}}],
+        "UserData"       : { "Fn::Base64" : { "Fn::Join" : ["", [
+          "#!/bin/bash\n",
+          "# fix the fqdn for the puppetclass.taoslab.com. domain\n",
+          "hostname {{ tag }}.puppetclass.taoslab.com\n",
+          "echo \"NETWORKING=yes\" > /etc/sysconfig/network\n",
+          "echo \"HOSTNAME={{ tag }}.puppetclass.taoslab.com\" >> /etc/sysconfig/network\n",
+          "echo \"NOZEROCONF=yes\" >> /etc/sysconfig/network\n",
+          "echo \"NETWORKING_IPV6=no\" >> /etc/sysconfig/network\n",
+          "echo \"IPV6INIT=no\" >> /etc/sysconfig/network\n",
+          "echo \"IPV6_ROUTER=no\" >> /etc/sysconfig/network\n",
+          "echo \"IPV6_AUTOCONF=no\" >> /etc/sysconfig/network\n",
+          "echo \"IPV6FORWARDING=no\" >> /etc/sysconfig/network\n",
+          "echo \"IPV6TO4INIT=no\" >> /etc/sysconfig/network\n",
+          "echo \"IPV6_CONTROL_RADVD=no\" >> /etc/sysconfig/network\n",
+
+          "service network restart\n",
+          "yum -y install git puppet\n",
+          "echo Done!", "\n"
+        ]]}}
+      }
+{% if tag == 'db' %}
+    }
+{% else %}
+    },
+{% endif %}
+{% endfor %}
+  },
+  "Outputs" : {
+{% for tag in TAGS %}
+    "Instance{{ tag }}" : {
+      "Value" : { "Ref" : "Instance{{ tag }}" },
+      "Description" : "Instance ID of your brand new {{ tag }}"
+{# check for last item in list to leave off the comma #}
+{% if tag == 'db' %}
+    }
+{% else %}
+    },
+{% endif %}
+{% endfor %}
+  }
+}
+
