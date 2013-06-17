@@ -51,6 +51,11 @@
       "us-west-1" : { "AMI" : "ami-1bf9de5e" },
       "us-west-2" : { "AMI" : "ami-2a31bf1a" }
     },
+    "AWSRegionToNatMap" : {
+      "us-east-1"      : {"AMI" : "ami-f619c29f"},
+      "us-west-2"      : {"AMI" : "ami-52ff7262"},
+      "us-west-1"      : {"AMI" : "ami-3bcc9e7e"}
+    },
     "StaticRoutesViaIgw" : {
       "R1"    : {"Target" : "0.0.0.0/0"}
     }
@@ -106,13 +111,8 @@
         "GroupDescription" : "SSH Access for Jump Box",
         "VpcId" : {"Ref" : "VPC"},
         "SecurityGroupIngress" : [
-          { "IpProtocol" : "tcp", "FromPort" : "22", "ToPort" : "22", "CidrIp" : "0.0.0.0/0" }
-        ],
-        "SecurityGroupEgress" : [
           { "IpProtocol" : "tcp", "FromPort" : "22", "ToPort" : "22", "CidrIp" : "0.0.0.0/0" },
-          { "IpProtocol" : "tcp", "FromPort" : "80", "ToPort" : "80", "CidrIp" : "0.0.0.0/0" },
-          { "IpProtocol" : "tcp", "FromPort" : "443", "ToPort" : "443", "CidrIp" : "0.0.0.0/0" },
-          { "IpProtocol" : "tcp", "FromPort" : "0", "ToPort" : "65535", "CidrIp" : "10.0.0.0/24" }
+          { "IpProtocol" : "-1", "FromPort" : "0", "ToPort" : "65535", "CidrIp" : "10.0.0.0/24" }
         ]
       }
     },
@@ -125,12 +125,6 @@
           { "IpProtocol" : "tcp", "FromPort" : "443", "ToPort" : "443", "CidrIp" : "0.0.0.0/0" },
           { "IpProtocol" : "tcp", "FromPort" : "80", "ToPort" : "80", "CidrIp" : "0.0.0.0/0" },
           { "IpProtocol" : "tcp", "FromPort" : "22", "ToPort" : "22", "CidrIp" : "0.0.0.0/0" }
-        ],
-        "SecurityGroupEgress" : [
-          { "IpProtocol" : "tcp", "FromPort" : "22", "ToPort" : "22", "CidrIp" : "0.0.0.0/0" },
-          { "IpProtocol" : "tcp", "FromPort" : "80", "ToPort" : "80", "CidrIp" : "0.0.0.0/0" },
-          { "IpProtocol" : "tcp", "FromPort" : "443", "ToPort" : "443", "CidrIp" : "0.0.0.0/0" },
-          { "IpProtocol" : "tcp", "FromPort" : "0", "ToPort" : "65535", "CidrIp" : "10.0.0.0/24" }
         ]
       }
     },
@@ -140,13 +134,7 @@
         "GroupDescription" : "SSH, HTTP, HTTPS Outbound connections",
         "VpcId" : {"Ref" : "VPC"},
         "SecurityGroupIngress" : [
-          { "IpProtocol" : "tcp", "FromPort" : "0", "ToPort" : "65535", "CidrIp" : "10.0.0.0/24" }
-        ],
-        "SecurityGroupEgress" : [
-          { "IpProtocol" : "tcp", "FromPort" : "22", "ToPort" : "22", "CidrIp" : "0.0.0.0/0" },
-          { "IpProtocol" : "tcp", "FromPort" : "80", "ToPort" : "80", "CidrIp" : "0.0.0.0/0" },
-          { "IpProtocol" : "tcp", "FromPort" : "443", "ToPort" : "443", "CidrIp" : "0.0.0.0/0" },
-          { "IpProtocol" : "tcp", "FromPort" : "0", "ToPort" : "65535", "CidrIp" : "10.0.0.0/24" }
+          { "IpProtocol" : "-1", "FromPort" : "0", "ToPort" : "65535", "CidrIp" : "10.0.0.0/24" }
         ]
       }
     },
@@ -169,12 +157,7 @@
                 'db'    : '10.0.0.105' 
                } %}
 {% for tag in TAGS %}
-    "{{ tag }}EIP1" : {
-      "Type" : "AWS::EC2::EIP",
-      "Properties" : {
-        "Domain" : "vpc"
-      }
-    },
+
     "{{ tag }}ENI1" : {
       "Type" : "AWS::EC2::NetworkInterface",
         "Properties" : {
@@ -182,6 +165,7 @@
         "Description" : "ENI for Nat in AZ1",
         "PrivateIpAddress" : "{{ IP[tag] }}",
 {% if tag == 'jump' %}
+        "SourceDestCheck": "False",
         "GroupSet" : [ { "Ref" : "JumpSG" } ]
 {% elif tag == 'web' %}
         "GroupSet" : [ { "Ref" : "WebSG" } ]
@@ -190,14 +174,6 @@
 {% endif %}
         }
       },
-      "Associate{{ tag  }}ENI1toIP2" : {
-        "Type" : "AWS::EC2::EIPAssociation",
-        "Properties" : {
-        "AllocationId" : { "Fn::GetAtt" : [ "{{ tag  }}EIP1", "AllocationId" ]},
-        "NetworkInterfaceId" : { "Ref" : "{{ tag }}ENI1" }
-        }
-      },
-
     "Instance{{ tag }}": {
       "Type": "AWS::EC2::Instance",
       "Metadata" : {
@@ -206,7 +182,11 @@
         "stack_name": { "Ref": "AWS::StackName" }
       },
       "Properties" : {
+{% if tag == 'jump' %}
+        "ImageId" : { "Fn::FindInMap" : [ "AWSRegionToNatMap", { "Ref" : "AWS::Region" }, "AMI" ]},
+{% else %}
         "ImageId" : { "Fn::FindInMap" : [ "RegionMap", { "Ref" : "AWS::Region" }, "AMI" ]},
+{% endif %}
         "NetworkInterfaces" : [ { "NetworkInterfaceId" : { "Ref" : "{{ tag }}ENI1" }, "DeviceIndex" : "0" } ],
         "InstanceType" : { "Ref" : "InstanceType" },
         "KeyName" : { "Ref" : "KeyName" },
@@ -216,6 +196,10 @@
           "#!/bin/bash\n",
           "# fix the fqdn for the puppetclass.taoslab.com. domain\n",
           "hostname {{ tag }}.puppetclass.taoslab.com\n",
+{% if tag in [ 'dns', 'puppet', 'ldap', 'db' ] %}
+          "# If instance does not have a EIP route through NAT/Jump instance\n",
+          "echo \"GATEWAY=10.0.0.100\" >> /etc/sysconfig/network-scripts/ifcfg-eth0\n", 
+{% endif %}
           "echo \"NETWORKING=yes\" > /etc/sysconfig/network\n",
           "echo \"HOSTNAME={{ tag }}.puppetclass.taoslab.com\" >> /etc/sysconfig/network\n",
           "echo \"NOZEROCONF=yes\" >> /etc/sysconfig/network\n",
@@ -237,20 +221,32 @@
 {% else %}
     },
 {% endif %}
+{% if tag in ['jump', 'web'] %}
+    "{{ tag }}EIP1" : {
+      "Type" : "AWS::EC2::EIP",
+      "Properties" : {
+        "Domain" : "vpc"
+      }
+    },
+      "Associate{{ tag  }}ENI1toIP2" : {
+        "Type" : "AWS::EC2::EIPAssociation",
+        "Properties" : {
+        "AllocationId" : { "Fn::GetAtt" : [ "{{ tag  }}EIP1", "AllocationId" ]},
+        "NetworkInterfaceId" : { "Ref" : "{{ tag }}ENI1" }
+        }
+      },
+{% endif %}
 {% endfor %}
   },
   "Outputs" : {
-{% for tag in TAGS %}
-    "Instance{{ tag }}" : {
-      "Value" : { "Ref" : "Instance{{ tag }}" },
-      "Description" : "Instance ID of your brand new {{ tag }}"
-{# check for last item in list to leave off the comma #}
-{% if tag == 'db' %}
-    }
-{% else %}
+    "jumpIp" : {
+      "Value" : { "Ref" : "jumpEIP1" },
+      "Description" : "Public IP of Stack Jump Instance"
     },
-{% endif %}
-{% endfor %}
+    "webIp" : {
+      "Value" : { "Ref" : "webEIP1" },
+      "Description" : "Public IP of Stack Web Instance"
+    }
   }
 }
 
