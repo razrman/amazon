@@ -37,7 +37,7 @@ z = 'puppetclass.taoslab.com.'
 zid = get_zid(r53,z)
 logger("Zone: "+z+" Id: "+zid)
 
-for uid in range(25,27):
+for uid in range(0,20):
     stackname = 'PuppetClassuser-%02d' % uid
     stack = cfn.describe_stacks(stackname)
     for pair in stack[0].outputs:
