@@ -195,7 +195,7 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    NEXTSTACK = "PuppetClass"+options.user
+    NEXTSTACK = options.user + "Stack"
 
     cfn = boto.connect_cloudformation()
 
@@ -210,8 +210,8 @@ def main():
 
     params = [
         ('UserName', options.user),
-        # ('KeyName' , options.user + "-key"),
-        ('KeyName' , "user-00-key"),
+        ('KeyName' , options.user),
+        #('KeyName' , "user-00-key"),
     ]
 
     try:
