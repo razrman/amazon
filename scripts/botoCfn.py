@@ -37,8 +37,8 @@ z = 'puppetclass.taoslab.com.'
 zid = get_zid(r53,z)
 logger("Zone: "+z+" Id: "+zid)
 
-for uid in range(0,20):
-    stackname = 'PuppetClassuser-%02d' % uid
+for uid in range(1,2):
+    stackname = 'puppet%02dStack' % uid
     stack = cfn.describe_stacks(stackname)
     for pair in stack[0].outputs:
         logger (stackname + ": " + pair.key + "=" + pair.value)
@@ -46,12 +46,19 @@ for uid in range(0,20):
             host = 'web%02d' % uid
             fqdn = host + '.puppetclass.taoslab.com.'
             logger(fqdn+' ('+pair.value+')')
-            route53.add_record(r53,zid,fqdn,'A',pair.value, ttl=300)
+            try:
+                route53.add_record(r53,zid,fqdn,'A',pair.value, ttl=300)
+            except:
+                route53.change_record(r53,zid,fqdn,'A',pair.value, ttl=300)
         if 'jump' in pair.key:
             host = 'jump%02d' % uid
             fqdn = host + '.puppetclass.taoslab.com.'
             logger(fqdn+' ('+pair.value+')')
-            route53.add_record(r53,zid,fqdn,'A',pair.value, ttl=300)
+            try:
+                route53.add_record(r53,zid,fqdn,'A',pair.value, ttl=300)
+            except:
+                route53.change_record(r53,zid,fqdn,'A',pair.value, ttl=300)
+
     time.sleep(1)
 
   
